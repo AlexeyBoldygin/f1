@@ -1,4 +1,5 @@
-aiohttp
-feedparser
-pyTelegramBotAPI
-beautifulsoup4
+aiohttp>=3.9
+feedparser>=6.0
+beautifulsoup4>=4.12
+pyTelegramBotAPI>=4.17
+python-dotenv>=1.0

@@ -1,2 +1,2 @@
 #!/bin/bash
-python f1_news_bot22222.py
+python3 /workspace/f1_pitwall_bot.py
