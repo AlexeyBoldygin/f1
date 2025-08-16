@@ -19,7 +19,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # ==========================
 # 🔧 PIT WALL CONFIGURATION
 # ==========================
-PIT_CREW_TOKEN = "7829313238:AAENEfOqkYpKLuuq-VNw4tYUs2KNF9z3n3o"
+PIT_CREW_TOKEN = "7829313238:AAENEfokYpKLuuq-VNw4tYUs2KNF9z3n3o"
 TEAM_RADIO_CHANNEL = "@f1russsia_news"
 
 TEAM_GARAGE = "team_data.json"
@@ -51,6 +51,7 @@ HTTP_GEARBOX = {
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=20, connect=10)
 
 tele_bot = AsyncTeleBot(PIT_CREW_TOKEN, parse_mode=TG_STYLE)
+tele_bot_plain = AsyncTeleBot(PIT_CREW_TOKEN)
 
 # ==========================
 # 📟 Telemetry & Logs
@@ -211,14 +212,32 @@ def strip_html(content: Optional[str]) -> str:
     except Exception:
         clean_text = re.sub(r"<[^>]+>", " ", content)
     clean_text = html.unescape(clean_text)
+    # Normalize common Unicode punctuation that confuses MarkdownV2
+    clean_text = (
+        clean_text.replace("\u200b", "")  # zero-width space
+        .replace("–", "-")  # en dash
+        .replace("—", "-")  # em dash
+        .replace("…", "...")  # ellipsis
+    )
     return re.sub(r"\s+", " ", clean_text).strip()
 
-_MD_ESCAPE = re.compile(r"([_*\[\]()~`>#+\-=|{}.!])")
+
+def normalize_text(text: str) -> str:
+    if not text:
+        return ""
+    return (
+        text.replace("\u200b", "")
+        .replace("–", "-")
+        .replace("—", "-")
+        .replace("…", "...")
+    )
+
+_MD_ESCAPE = re.compile(r"([_*\[\]()~`>#+=|{}.!-])")
 
 def escape_md(text: str) -> str:
     if not text:
         return ""
-    return _MD_ESCAPE.sub(r"\\\1", text)
+    return _MD_ESCAPE.sub(lambda m: "\\" + m.group(1), text)
 
 def trim_md(text: str, max_len: int) -> str:
     if len(text) <= max_len:
@@ -364,7 +383,7 @@ def build_hashtags(title: str, summary: str) -> str:
 def create_broadcast(title: str, team: str, details: str) -> str:
     # Header
     icon = _choose_header_icon(title)
-    title_clean = escape_md(title)
+    title_clean = escape_md(normalize_text(title))
     header = f"{icon} *{title_clean}*"
 
     # Summary
@@ -377,7 +396,7 @@ def create_broadcast(title: str, team: str, details: str) -> str:
 
     # Footer
     timestamp = race_time(datetime.datetime.now())
-    footer = escape_md(f"🕒 {timestamp} · {team}")
+    footer = escape_md(normalize_text(f"🕒 {timestamp} · {team}"))
     footer_line = f"_{footer}_"
 
     # Assemble with checkered bar
@@ -395,7 +414,11 @@ def create_broadcast(title: str, team: str, details: str) -> str:
 
     # Trim summary first
     if details_md:
-        overhead = len("\n".join([header, CHECKERED_BAR, "", "", hashtags, "", footer_line]))
+        skeleton_parts: List[str] = [header, CHECKERED_BAR]
+        if hashtags:
+            skeleton_parts.extend(["", hashtags])
+        skeleton_parts.extend(["", footer_line])
+        overhead = len("\n".join(skeleton_parts))
         limit_for_summary = max(0, TG_MAX_MESSAGE - overhead)
         if limit_for_summary > 0:
             details_md = trim_md(details_md, limit_for_summary)
@@ -504,20 +527,18 @@ async def broadcast_update(
         try:
             raw = f"{HEADLINE_FLAG_DEFAULT} {headline}\n\n{strip_html(details)}\n\n🕒 {race_time(datetime.datetime.now())} · {source}"
             if photo and valid_photo(photo):
-                await tele_bot.send_photo(
+                await tele_bot_plain.send_photo(
                     TEAM_RADIO_CHANNEL,
                     photo,
                     caption=raw,
                     reply_markup=controls,
-                    parse_mode=None,
                 )
             else:
-                await tele_bot.send_message(
+                await tele_bot_plain.send_message(
                     TEAM_RADIO_CHANNEL,
                     raw,
                     reply_markup=controls,
                     disable_web_page_preview=False,
-                    parse_mode=None,
                 )
             published.append(content_id)
             logger.info(f"📻 Fallback delivered: {source}")
